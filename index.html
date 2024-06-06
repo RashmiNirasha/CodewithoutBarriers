@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Prediction</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Upload an Image for Prediction</h1>
+        <input type="file" id="imageUpload" accept="image/*">
+        <button onclick="predictImage()">Predict</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const predictionUrl = "https://imageclasscwb-prediction.cognitiveservices.azure.com/customvision/v3.0/Prediction/f35fffc9-0280-4a80-bc58-8f621e5dee06/detect/iterations/Iteration1/image";
+        const predictionKey = "9bc5c2db077247ab89296f9efec7ff9f";
+
+        function transformCoordinates(boundingBox) {
+            const left = boundingBox.left;
+            const top = boundingBox.top;
+            const width = boundingBox.width;
+            const height = boundingBox.height;
+            const coordinateX = Math.round((left + width / 2) * 1000);
+            const coordinateY = Math.round((top + height / 2) * 1000);
+            return { coordinateX, coordinateY };
+        }
+
+        function predictImage() {
+            const fileInput = document.getElementById('imageUpload');
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '';
+
+            if (fileInput.files.length === 0) {
+                alert('Please upload an image first.');
+                return;
+            }
+
+            const imageFile = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(event) {
+                const imageData = event.target.result;
+
+                fetch(predictionUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Prediction-Key': predictionKey,
+                        'Content-Type': 'application/octet-stream'
+                    },
+                    body: imageData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const transformedData = { "Data": [] };
+                    const countMap = {};
+
+                    data.predictions.forEach(prediction => {
+                        const tagName = prediction.tagName;
+                        const boundingBox = prediction.boundingBox;
+                        const { coordinateX, coordinateY } = transformCoordinates(boundingBox);
+                        transformedData.Data.push({
+                            Type: tagName.charAt(0).toUpperCase() + tagName.slice(1),
+                            CoordinateX: coordinateX.toString(),
+                            CoordinateY: coordinateY.toString()
+                        });
+
+                        if (!countMap[tagName]) {
+                            countMap[tagName] = 0;
+                        }
+                        countMap[tagName]++;
+                    });
+
+                    let resultHtml = `<pre>${JSON.stringify(transformedData, null, 2)}</pre>`;
+                    resultHtml += '<p>Counts:</p><ul>';
+                    for (const [type, count] of Object.entries(countMap)) {
+                        resultHtml += `<li>${type.charAt(0).toUpperCase() + type.slice(1)}: ${count}</li>`;
+                    }
+                    resultHtml += '</ul>';
+
+                    resultDiv.innerHTML = resultHtml;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    resultDiv.innerHTML = `<p style="color: red;">Error: ${error}</p>`;
+                });
+            };
+
+            reader.readAsArrayBuffer(imageFile);
+        }
+    </script>
+</body>
+</html>
